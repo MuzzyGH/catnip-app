@@ -29,6 +29,10 @@ def register():
     auth_logic = get_auth_logic()
     result = auth_logic.register_user(email, password, username)
     
+    # Log email sending status for debugging
+    if result.get('email_sent') is False:
+        print(f"WARNING: Email was not sent to {email}. Check Resend configuration.")
+    
     if result['success']:
         return jsonify(result), 201
     return jsonify(result), 400

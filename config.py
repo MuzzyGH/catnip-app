@@ -17,9 +17,9 @@ class Config:
     }
     
     # Email configuration (Resend)
-    RESEND_API_KEY = os.environ.get('re_C5eo9HHc_HnM6CaN97bzVGXFJxpYTmK7w')
-    FROM_EMAIL = os.environ.get('FROM_EMAIL', 'noreply@yourdomain.com')
-    VERIFICATION_BASE_URL = os.environ.get('VERIFICATION_BASE_URL', 'http://localhost:3000')
+    RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
+    FROM_EMAIL = os.environ.get('FROM_EMAIL', 'onboarding@resend.dev')  # Default Resend test domain
+    VERIFICATION_BASE_URL = os.environ.get('VERIFICATION_BASE_URL', 'https://catnip-server-f719fd21cd8e.herokuapp.com')
     
     # Fallback SMTP (if Resend not available)
     SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')

@@ -44,7 +44,7 @@ class EmailService:
                 import resend
                 resend.api_key = self.resend_api_key
                 
-                resend.Emails.send({
+                result = resend.Emails.send({
                     "from": self.from_email,
                     "to": email,
                     "subject": "Verify Your Catnip Account",
@@ -69,9 +69,12 @@ class EmailService:
                     </html>
                     """
                 })
+                print(f"Resend email sent successfully. Result: {result}")
                 return True
             except Exception as e:
                 print(f"Resend email error: {e}")
+                import traceback
+                traceback.print_exc()
                 # Fall through to SMTP
         
         # Fallback to SMTP

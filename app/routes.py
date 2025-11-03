@@ -42,14 +42,118 @@ def verify_email():
     """Verify email with token"""
     token = request.args.get('token')
     if not token:
-        return jsonify({'success': False, 'error': 'Token required'}), 400
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Verification Failed</title></head>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h2>Verification Failed</h2>
+            <p>No verification token provided.</p>
+        </body>
+        </html>
+        """, 400
     
     auth_logic = get_auth_logic()
     result = auth_logic.verify_email(token)
     
     if result['success']:
-        return jsonify(result), 200
-    return jsonify(result), 400
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Email Verified</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding: 50px;
+                    background: #f5f5f5;
+                }
+                .container {
+                    max-width: 500px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 40px;
+                    border-radius: 10px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                .success {
+                    color: #4CAF50;
+                    font-size: 48px;
+                    margin-bottom: 20px;
+                }
+                h2 {
+                    color: #333;
+                    margin-bottom: 20px;
+                }
+                p {
+                    color: #666;
+                    line-height: 1.6;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success">✓</div>
+                <h2>Email Verified Successfully!</h2>
+                <p>Your email address has been verified. You can now log in to Catnip.</p>
+                <p style="margin-top: 30px; font-size: 14px; color: #999;">
+                    You can close this window and return to the app.
+                </p>
+            </div>
+        </body>
+        </html>
+        """, 200
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Verification Failed</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                text-align: center;
+                padding: 50px;
+                background: #f5f5f5;
+            }}
+            .container {{
+                max-width: 500px;
+                margin: 0 auto;
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }}
+            .error {{
+                color: #f44336;
+                font-size: 48px;
+                margin-bottom: 20px;
+            }}
+            h2 {{
+                color: #333;
+                margin-bottom: 20px;
+            }}
+            p {{
+                color: #666;
+                line-height: 1.6;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="error">✗</div>
+            <h2>Verification Failed</h2>
+            <p>{result.get('error', 'Invalid or expired verification token.')}</p>
+            <p style="margin-top: 30px; font-size: 14px; color: #999;">
+                Please request a new verification email if needed.
+            </p>
+        </div>
+    </body>
+    </html>
+    """, 400
 
 @auth_bp.route('/login', methods=['POST'])
 def login():

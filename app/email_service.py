@@ -38,12 +38,17 @@ class EmailService:
         """
         verification_link = f"{self.base_url}/verify-email?token={token}"
         
+        # Debug logging
+        print(f"DEBUG: Attempting to send email from '{self.from_email}' to '{email}'")
+        print(f"DEBUG: Resend API key present: {bool(self.resend_api_key)}")
+        
         # Try Resend first
         if self.resend_api_key:
             try:
                 import resend
                 resend.api_key = self.resend_api_key
                 
+                print(f"DEBUG: Sending via Resend with from='{self.from_email}', to='{email}'")
                 result = resend.Emails.send({
                     "from": self.from_email,
                     "to": email,

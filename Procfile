@@ -1,2 +1,1 @@
-web: python auth_server.py
-
+web: python cloud.py

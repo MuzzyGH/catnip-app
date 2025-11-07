@@ -145,6 +145,38 @@ class AuthLogic:
             'token': token,
             'user': user.to_dict()
         }
+
+    def request_password_reset(self, email: str) -> dict:
+        """Generate password reset token and send reset email. Always return success."""
+        user = self.db.query(User).filter_by(email=email).first()
+        if not user:
+            # Do not reveal whether email exists
+            return {'success': True, 'message': 'If the email exists, a reset link has been sent.'}
+
+        reset_token = self.email_service.generate_verification_token()
+        user.password_reset_token = reset_token
+        user.password_reset_sent_at = datetime.utcnow()
+        user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
+        self.db.commit()
+
+        self.email_service.send_password_reset_email(email, reset_token)
+        return {'success': True, 'message': 'If the email exists, a reset link has been sent.'}
+
+    def reset_password(self, token: str, new_password: str) -> dict:
+        """Reset the password using a valid, non-expired token."""
+        user = self.db.query(User).filter_by(password_reset_token=token).first()
+        if not user:
+            return {'success': False, 'error': 'Invalid or expired reset token'}
+
+        if user.password_reset_expires_at and user.password_reset_expires_at < datetime.utcnow():
+            return {'success': False, 'error': 'Reset token has expired'}
+
+        user.password_hash = self.hash_password(new_password)
+        user.password_reset_token = None
+        user.password_reset_sent_at = None
+        user.password_reset_expires_at = None
+        self.db.commit()
+        return {'success': True, 'message': 'Password reset successfully'}
     
     def google_login(self, google_token: str) -> dict:
         """

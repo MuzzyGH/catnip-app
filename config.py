@@ -19,7 +19,7 @@ class Config:
     # Email configuration (Resend)
     RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
     FROM_EMAIL = os.environ.get('FROM_EMAIL', 'noreply@updates.catnip.be')  # Using verified subdomain
-    VERIFICATION_BASE_URL = os.environ.get('VERIFICATION_BASE_URL', 'https://catnip-server-f719fd21cd8e.herokuapp.com')
+    VERIFICATION_BASE_URL = os.environ.get('VERIFICATION_BASE_URL', 'https://api.catnip.be')  # Using subdomain for API/auth endpoints
     
     # Fallback SMTP (if Resend not available)
     SMTP_SERVER = os.environ.get('SMTP_SERVER', 'smtp.gmail.com')

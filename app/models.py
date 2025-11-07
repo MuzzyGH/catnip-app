@@ -26,6 +26,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+
+    # Password reset
+    password_reset_token = Column(String(100), unique=True, nullable=True)
+    password_reset_sent_at = Column(DateTime, nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
     
     def to_dict(self):
         """Convert user to dictionary"""

@@ -15,6 +15,82 @@ def get_auth_logic():
     """Get AuthLogic instance with current database session"""
     return AuthLogic(db.session)
 
+@auth_bp.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    """Request password reset (always responds with success message)."""
+    data = request.json
+    email = data.get('email') if data else None
+    if not email:
+        return jsonify({'success': False, 'error': 'Email required'}), 400
+
+    result = get_auth_logic().request_password_reset(email)
+    return jsonify(result), 200
+
+@auth_bp.route('/reset-password', methods=['GET', 'POST'])
+def reset_password():
+    """Password reset flow: GET returns form, POST applies new password."""
+    if request.method == 'GET':
+        token = request.args.get('token')
+        if not token:
+            return """
+            <!DOCTYPE html><html><body style="font-family: Arial; text-align:center; padding:40px;">
+            <h3>Missing token</h3>
+            </body></html>
+            """, 400
+
+        return f"""
+        <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Reset Password</title></head><body style="font-family: Arial; background:#f5f5f5; padding:40px;">
+          <div style="max-width:420px;margin:0 auto;background:#fff;padding:28px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);">
+            <h2>Reset Your Password</h2>
+            <form id="reset-form">
+              <input type="password" id="new" placeholder="New Password" required minlength="8"
+                     style="width:100%;padding:12px;margin-top:10px;border:1px solid #ddd;border-radius:6px;">
+              <input type="password" id="confirm" placeholder="Confirm Password" required
+                     style="width:100%;padding:12px;margin-top:10px;border:1px solid #ddd;border-radius:6px;">
+              <button type="submit" style="width:100%;padding:12px;margin-top:14px;background:#4CAF50;color:#fff;border:none;border-radius:6px;">
+                Reset Password
+              </button>
+              <div id="err" style="color:#f44336;margin-top:10px;display:none;"></div>
+            </form>
+          </div>
+          <script>
+            const token = "{token}";
+            document.getElementById('reset-form').addEventListener('submit', async (e) => {{
+              e.preventDefault();
+              const p = document.getElementById('new').value;
+              const c = document.getElementById('confirm').value;
+              const err = document.getElementById('err');
+              if (p !== c) {{ err.textContent='Passwords do not match'; err.style.display='block'; return; }}
+              if (p.length < 8) {{ err.textContent='Password must be at least 8 characters'; err.style.display='block'; return; }}
+              const r = await fetch('/reset-password', {{
+                method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{ token, password:p }})
+              }});
+              const j = await r.json();
+              if (j.success) {{
+                document.body.innerHTML = '<div style="max-width:420px;margin:40px auto;background:#fff;padding:28px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.1);text-align:center;"><h2 style="color:#4CAF50;">\u2713 Password Reset</h2><p>You can now log in with your new password.</p></div>';
+              }} else {{
+                err.textContent = j.error || 'Reset failed';
+                err.style.display='block';
+              }}
+            }});
+          </script>
+        </body></html>
+        """, 200
+
+    data = request.json
+    token = data.get('token') if data else None
+    password = data.get('password') if data else None
+    if not token or not password:
+        return jsonify({'success': False, 'error': 'Token and password required'}), 400
+    if len(password) < 8:
+        return jsonify({'success': False, 'error': 'Password must be at least 8 characters'}), 400
+
+    result = get_auth_logic().reset_password(token, password)
+    if result.get('success'):
+        return jsonify(result), 200
+    return jsonify(result), 400
+
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """Register new user"""

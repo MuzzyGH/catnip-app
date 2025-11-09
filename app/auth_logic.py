@@ -25,22 +25,22 @@ class AuthLogic:
         self.token_expiry = timedelta(days=Config.JWT_EXPIRATION_DAYS)
     
     def normalize_email(self, email: str) -> str:
-			"""Normalize email for case-insensitive comparison and plus-addressing rules.
-			
-			- Always trims and lowercases.
-			- If plus addressing is disallowed (Config.ALLOW_PLUS_ADDRESSING is False),
-			  strips the '+tag' from the local part, e.g., 'user+news@example.com' -> 'user@example.com'.
-			"""
-			if not email:
-				return email
-			e = email.strip().lower()
-			if not Config.ALLOW_PLUS_ADDRESSING:
-				if '@' in e:
-					local, domain = e.split('@', 1)
-					if '+' in local:
-						local = local.split('+', 1)[0]
-					e = f"{local}@{domain}"
-			return e
+        """Normalize email for case-insensitive comparison and plus-addressing rules.
+        
+        - Always trims and lowercases.
+        - If plus addressing is disallowed (Config.ALLOW_PLUS_ADDRESSING is False),
+            strips the '+tag' from the local part, e.g., 'user+news@example.com' -> 'user@example.com'.
+        """
+        if not email:
+            return email
+        e = email.strip().lower()
+        if not Config.ALLOW_PLUS_ADDRESSING:
+            if '@' in e:
+                local, domain = e.split('@', 1)
+                if '+' in local:
+                    local = local.split('+', 1)[0]
+                e = f"{local}@{domain}"
+        return e
     
     def hash_password(self, password: str) -> str:
         """Hash password using bcrypt"""

@@ -37,3 +37,10 @@ class Config:
     # JWT settings
     JWT_EXPIRATION_DAYS = 30
 
+    # Email normalization rules
+    # Disallow plus-addressing (treat user+tag@example.com as user@example.com) when False
+    ALLOW_PLUS_ADDRESSING = os.environ.get('ALLOW_PLUS_ADDRESSING', 'false').strip().lower() in ('1', 'true', 'yes')
+
+# Backwards/explicit lower-case alias as requested
+allow_plus_addressing = Config.ALLOW_PLUS_ADDRESSING
+

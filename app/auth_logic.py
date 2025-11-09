@@ -4,6 +4,7 @@ import sys
 import os
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,6 +23,24 @@ class AuthLogic:
         self.email_service = EmailService()
         self.oauth_service = GoogleOAuthService()
         self.token_expiry = timedelta(days=Config.JWT_EXPIRATION_DAYS)
+    
+    def normalize_email(self, email: str) -> str:
+			"""Normalize email for case-insensitive comparison and plus-addressing rules.
+			
+			- Always trims and lowercases.
+			- If plus addressing is disallowed (Config.ALLOW_PLUS_ADDRESSING is False),
+			  strips the '+tag' from the local part, e.g., 'user+news@example.com' -> 'user@example.com'.
+			"""
+			if not email:
+				return email
+			e = email.strip().lower()
+			if not Config.ALLOW_PLUS_ADDRESSING:
+				if '@' in e:
+					local, domain = e.split('@', 1)
+					if '+' in local:
+						local = local.split('+', 1)[0]
+					e = f"{local}@{domain}"
+			return e
     
     def hash_password(self, password: str) -> str:
         """Hash password using bcrypt"""
@@ -49,13 +68,15 @@ class AuthLogic:
         Verify JWT token
         
         Returns:
-            dict with user_id and email if valid, None otherwise
+            dict with user_id and email if valid,
+            {'expired': True} if signature expired,
+            None otherwise
         """
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=['HS256'])
             return payload
         except jwt.ExpiredSignatureError:
-            return None
+            return {'expired': True}
         except jwt.InvalidTokenError:
             return None
     
@@ -66,9 +87,16 @@ class AuthLogic:
         Returns:
             dict with success status and message/user_id
         """
-        # Check if user exists
-        existing = self.db.query(User).filter_by(email=email).first()
+        # Normalize email to lowercase
+        email = self.normalize_email(email)
+        
+        # Check if user exists (case-insensitive)
+        existing = self.db.query(User).filter(func.lower(User.email) == email.lower()).first()
         if existing:
+            # Normalize existing user's email if needed
+            if existing.email != email:
+                existing.email = email
+                self.db.commit()
             return {'success': False, 'error': 'Email already registered'}
         
         # Create verification token
@@ -121,9 +149,19 @@ class AuthLogic:
         Returns:
             dict with success status, token, and user info
         """
-        user = self.db.query(User).filter_by(email=email).first()
+        # Normalize email to lowercase
+        normalized_email = self.normalize_email(email)
+        
+        # Find user case-insensitively
+        user = self.db.query(User).filter(func.lower(User.email) == normalized_email.lower()).first()
+        
         if not user or not user.password_hash:
             return {'success': False, 'error': 'Invalid credentials'}
+        
+        # Normalize user's email in database if needed
+        if user.email != normalized_email:
+            user.email = normalized_email
+            self.db.commit()
         
         if not self.verify_password(password, user.password_hash):
             return {'success': False, 'error': 'Invalid credentials'}
@@ -148,10 +186,19 @@ class AuthLogic:
 
     def request_password_reset(self, email: str) -> dict:
         """Generate password reset token and send reset email. Always return success."""
-        user = self.db.query(User).filter_by(email=email).first()
+        # Normalize email to lowercase
+        normalized_email = self.normalize_email(email)
+        
+        # Find user case-insensitively
+        user = self.db.query(User).filter(func.lower(User.email) == normalized_email.lower()).first()
         if not user:
             # Do not reveal whether email exists
             return {'success': True, 'message': 'If the email exists, a reset link has been sent.'}
+
+        # Normalize user's email in database if needed
+        if user.email != normalized_email:
+            user.email = normalized_email
+            self.db.commit()
 
         reset_token = self.email_service.generate_verification_token()
         user.password_reset_token = reset_token
@@ -159,7 +206,8 @@ class AuthLogic:
         user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
         self.db.commit()
 
-        self.email_service.send_password_reset_email(email, reset_token)
+        # Send email to normalized (lowercase) email
+        self.email_service.send_password_reset_email(normalized_email, reset_token)
         return {'success': True, 'message': 'If the email exists, a reset link has been sent.'}
 
     def reset_password(self, token: str, new_password: str) -> dict:
@@ -189,25 +237,31 @@ class AuthLogic:
         if not google_info:
             return {'success': False, 'error': 'Invalid Google token'}
         
+        # Normalize email to lowercase
+        google_email = self.normalize_email(google_info['email'])
+        
         # Check if user exists by Google ID
         user = self.db.query(User).filter_by(google_id=google_info['google_id']).first()
         
         if not user:
-            # Check if email already exists
-            existing = self.db.query(User).filter_by(email=google_info['email']).first()
+            # Check if email already exists (case-insensitive)
+            existing = self.db.query(User).filter(func.lower(User.email) == google_email.lower()).first()
             if existing:
+                # Normalize existing user's email if needed
+                if existing.email != google_email:
+                    existing.email = google_email
                 # Link Google account to existing user
                 existing.google_id = google_info['google_id']
-                existing.google_email = google_info['email']
+                existing.google_email = google_email
                 existing.email_verified = True  # Google emails are pre-verified
                 user = existing
             else:
                 # Create new user
                 user = User(
-                    email=google_info['email'],
+                    email=google_email,
                     username=google_info.get('name'),
                     google_id=google_info['google_id'],
-                    google_email=google_info['email'],
+                    google_email=google_email,
                     email_verified=True  # Google emails are verified
                 )
                 self.db.add(user)

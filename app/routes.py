@@ -280,6 +280,9 @@ def verify_token():
     auth_logic = get_auth_logic()
     payload = auth_logic.verify_jwt_token(token)
     
+    if payload and isinstance(payload, dict) and payload.get('expired'):
+        return jsonify({'success': False, 'error': 'Token expired', 'expired': True}), 401
+    
     if payload:
         # Optionally verify user still exists and is active
         user = db.session.query(User).filter_by(id=payload['user_id']).first()

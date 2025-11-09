@@ -12,6 +12,9 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=True)
     password_hash = Column(String(255), nullable=True)  # None if Google-only user
+    # Devices (allow two devices max)
+    device_primary = Column(String(128), nullable=True, index=True)
+    device_secondary = Column(String(128), nullable=True, index=True)
     
     # Email verification
     email_verified = Column(Boolean, default=False)

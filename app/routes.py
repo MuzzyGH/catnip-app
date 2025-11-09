@@ -98,12 +98,13 @@ def register():
     email = data.get('email') if data else None
     password = data.get('password') if data else None
     username = data.get('username') if data else None
+    device_id = data.get('device_id') if data else None
     
     if not email or not password:
         return jsonify({'success': False, 'error': 'Email and password required'}), 400
     
     auth_logic = get_auth_logic()
-    result = auth_logic.register_user(email, password, username)
+    result = auth_logic.register_user(email, password, username, device_id)
     
     # Log email sending status for debugging
     if result.get('email_sent') is False:
@@ -237,12 +238,13 @@ def login():
     data = request.json
     email = data.get('email') if data else None
     password = data.get('password') if data else None
+    device_id = data.get('device_id') if data else None
     
     if not email or not password:
         return jsonify({'success': False, 'error': 'Email and password required'}), 400
     
     auth_logic = get_auth_logic()
-    result = auth_logic.login(email, password)
+    result = auth_logic.login(email, password, device_id)
     
     if result['success']:
         return jsonify(result), 200
@@ -253,12 +255,13 @@ def google_login():
     """Login with Google OAuth token"""
     data = request.json
     google_token = data.get('token') if data else None
+    device_id = data.get('device_id') if data else None
     
     if not google_token:
         return jsonify({'success': False, 'error': 'Google token required'}), 400
     
     auth_logic = get_auth_logic()
-    result = auth_logic.google_login(google_token)
+    result = auth_logic.google_login(google_token, device_id)
     
     if result['success']:
         return jsonify(result), 200

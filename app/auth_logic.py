@@ -13,6 +13,7 @@ from app.models import User
 from config import Config
 from app.email_service import EmailService
 from app.oauth_logic import GoogleOAuthService
+import hashlib
 
 class AuthLogic:
     """Business logic for authentication"""
@@ -29,7 +30,7 @@ class AuthLogic:
         
         - Always trims and lowercases.
         - If plus addressing is disallowed (Config.ALLOW_PLUS_ADDRESSING is False),
-            strips the '+tag' from the local part, e.g., 'user+news@example.com' -> 'user@example.com'.
+          strips the '+tag' from the local part, e.g., 'user+news@example.com' -> 'user@example.com'.
         """
         if not email:
             return email
@@ -41,6 +42,48 @@ class AuthLogic:
                     local = local.split('+', 1)[0]
                 e = f"{local}@{domain}"
         return e
+
+    def _device_hash(self, raw_device_id: str) -> str | None:
+        """Return salted SHA-256 hash of the raw device id."""
+        if not raw_device_id:
+            return None
+        salt = getattr(Config, 'DEVICE_SALT', Config.SECRET_KEY)
+        base = f"{raw_device_id}:{salt}"
+        return hashlib.sha256(base.encode('utf-8')).hexdigest()
+
+    def _mask_email(self, email: str) -> str:
+        """Mask email as d***@g***.com."""
+        if not email or '@' not in email:
+            return email
+        local, domain = email.split('@', 1)
+        masked_local = (local[0] + '***') if len(local) > 1 else local
+        if '.' in domain:
+            name, rest = domain.split('.', 1)
+            masked_domain = ((name[0] + '***') if len(name) > 1 else name) + '.' + rest
+        else:
+            masked_domain = (domain[0] + '***') if len(domain) > 1 else domain
+        return f"{masked_local}@{masked_domain}"
+
+    def _ensure_device_allowed_and_bind(self, user: User, raw_device_id: str) -> tuple[bool, str | None]:
+        """
+        Returns (allowed, hashed_device_id). Binds device_secondary if free, else denies on 3rd device.
+        """
+        fp = self._device_hash(raw_device_id)
+        if not fp:
+            return False, None
+        if not getattr(user, 'device_primary', None):
+            user.device_primary = fp
+            self.db.commit()
+            return True, fp
+        if fp == user.device_primary:
+            return True, fp
+        if getattr(user, 'device_secondary', None) and fp == user.device_secondary:
+            return True, fp
+        if not getattr(user, 'device_secondary', None):
+            user.device_secondary = fp
+            self.db.commit()
+            return True, fp
+        return False, None
     
     def hash_password(self, password: str) -> str:
         """Hash password using bcrypt"""
@@ -80,7 +123,7 @@ class AuthLogic:
         except jwt.InvalidTokenError:
             return None
     
-    def register_user(self, email: str, password: str, username: str = None) -> dict:
+    def register_user(self, email: str, password: str, username: str = None, device_id: str | None = None) -> dict:
         """
         Register new user with email/password
         
@@ -89,6 +132,21 @@ class AuthLogic:
         """
         # Normalize email to lowercase
         email = self.normalize_email(email)
+        
+        # One-account-per-device: block if device is already linked to any user
+        if device_id:
+            device_hash = self._device_hash(device_id)
+            if device_hash:
+                existing_device_user = self.db.query(User).filter(
+                    (User.device_primary == device_hash) | (User.device_secondary == device_hash)
+                ).first()
+                if existing_device_user:
+                    return {
+                        'success': False,
+                        'error': 'Device already linked to another account',
+                        'device_linked': True,
+                        'masked_email': self._mask_email(existing_device_user.email)
+                    }
         
         # Check if user exists (case-insensitive)
         existing = self.db.query(User).filter(func.lower(User.email) == email.lower()).first()
@@ -114,6 +172,13 @@ class AuthLogic:
         self.db.add(user)
         self.db.commit()
         self.db.refresh(user)
+        
+        # Bind device as primary if provided
+        if device_id:
+            device_hash = self._device_hash(device_id)
+            if device_hash:
+                user.device_primary = device_hash
+                self.db.commit()
         
         # Send verification email
         email_sent = self.email_service.send_verification_email(email, verification_token)
@@ -142,7 +207,7 @@ class AuthLogic:
         
         return {'success': True, 'message': 'Email verified successfully'}
     
-    def login(self, email: str, password: str) -> dict:
+    def login(self, email: str, password: str, device_id: str | None = None) -> dict:
         """
         Login with email/password
         
@@ -173,10 +238,19 @@ class AuthLogic:
                 'requires_verification': True
             }
         
+        # Enforce device policy (auto-claim secondary, deny on 3rd)
+        if device_id:
+            allowed, fp = self._ensure_device_allowed_and_bind(user, device_id)
+            if not allowed:
+                return {'success': False, 'error': 'Device limit reached (2 devices max)'}
+            device_fp = fp
+        else:
+            device_fp = None
+        
         user.last_login = datetime.utcnow()
         self.db.commit()
         
-        token = self.create_jwt_token(user.id, user.email)
+        token = self.create_jwt_token(user.id, user.email, device_fp)
         
         return {
             'success': True,
@@ -226,7 +300,7 @@ class AuthLogic:
         self.db.commit()
         return {'success': True, 'message': 'Password reset successfully'}
     
-    def google_login(self, google_token: str) -> dict:
+    def google_login(self, google_token: str, device_id: str | None = None) -> dict:
         """
         Login/register with Google OAuth token
         
@@ -266,15 +340,34 @@ class AuthLogic:
                 )
                 self.db.add(user)
         
+        # Enforce device policy
+        device_fp = None
+        if device_id:
+            allowed, fp = self._ensure_device_allowed_and_bind(user, device_id)
+            if not allowed:
+                return {'success': False, 'error': 'Device limit reached (2 devices max)'}
+            device_fp = fp
+        
         user.last_login = datetime.utcnow()
         self.db.commit()
         self.db.refresh(user)
         
-        token = self.create_jwt_token(user.id, user.email)
+        token = self.create_jwt_token(user.id, user.email, device_fp)
         
         return {
             'success': True,
             'token': token,
             'user': user.to_dict()
         }
+
+    def create_jwt_token(self, user_id: int, email: str, device_id_hashed: str | None) -> str:
+        """Create JWT token for user; include device hash claim if available."""
+        payload = {
+            'user_id': user_id,
+            'email': email,
+            'device': device_id_hashed,
+            'exp': datetime.utcnow() + self.token_expiry,
+            'iat': datetime.utcnow()
+        }
+        return jwt.encode(payload, self.secret_key, algorithm='HS256')
 

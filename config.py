@@ -44,3 +44,6 @@ class Config:
 # Backwards/explicit lower-case alias as requested
 allow_plus_addressing = Config.ALLOW_PLUS_ADDRESSING
 
+# Device binding
+Config.DEVICE_SALT = os.environ.get('DEVICE_SALT', Config.SECRET_KEY)
+
